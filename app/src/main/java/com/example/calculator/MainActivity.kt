@@ -12,18 +12,14 @@ import java.util.Stack
 
 class MainActivity : AppCompatActivity() {
 
-    // View Binding
     private lateinit var binding: ActivityMainBinding
 
-    // State variables
-    private val currentExpression =
-        StringBuilder("0") // Builds the expression with spaces, shown in text_result
-    private var isResultDisplayed = false // Flag to handle behavior after pressing "="
+    private val currentExpression = StringBuilder("0")
+    private var isResultDisplayed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Initialize View Binding
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { v, insets ->
@@ -32,7 +28,6 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        // Set click listeners for digits
         val digits = listOf(
             binding.buttonDigit0, binding.buttonDigit1, binding.buttonDigit2, binding.buttonDigit3,
             binding.buttonDigit4, binding.buttonDigit5, binding.buttonDigit6, binding.buttonDigit7,
@@ -44,7 +39,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Set click listeners for basic operators (+, -, x, /)
         val operators = listOf(
             binding.buttonOperationAddition, binding.buttonOperationSubtraction,
             binding.buttonOperationMultiplication, binding.buttonOperationDivision
@@ -55,14 +49,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Special buttons
         binding.buttonClear.setOnClickListener { clear() }
         binding.buttonDot.setOnClickListener { appendDot() }
         binding.buttonPositiveNegative.setOnClickListener { toggleSign() }
         binding.buttonHundredPercent.setOnClickListener { applyPercent() }
         binding.buttonEqual.setOnClickListener { calculate() }
+        binding.buttonOperationBack.setOnClickListener { backspace() }
 
-        // Initial update
         updateDisplay()
     }
 
@@ -77,6 +70,18 @@ class MainActivity : AppCompatActivity() {
             currentExpression.append(digit)
             isResultDisplayed = false
         } else {
+            val current = currentExpression.toString()
+            val lastToken = if (current.contains(" ")) {
+                current.substringAfterLast(" ")
+            } else {
+                current
+            }
+            val parts = lastToken.split(".")
+            if (parts[0].replace("-", "").length >= 12) {
+                Toast.makeText(this, "Maximum 12 digits allowed", Toast.LENGTH_SHORT).show()
+                return
+            }
+
             if (currentExpression.toString() == "0") {
                 currentExpression.setLength(0)
                 currentExpression.append(digit)
@@ -87,11 +92,6 @@ class MainActivity : AppCompatActivity() {
         updateDisplay()
     }
 
-    /**
-     * Appends an operator with spaces (" + ").
-     * If after a result, uses the result as the starting number.
-     * Replaces the last operator if pressed consecutively.
-     */
     private fun appendOperator(op: String) {
         if (isResultDisplayed) {
             isResultDisplayed = false
@@ -165,10 +165,6 @@ class MainActivity : AppCompatActivity() {
         updateDisplay()
     }
 
-    /**
-     * Applies % to the current number (divides by 100).
-     * Ignores if no current number.
-     */
     private fun applyPercent() {
         val current = currentExpression.toString()
         if (current.isEmpty() || current.endsWith(" ")) return
@@ -183,15 +179,9 @@ class MainActivity : AppCompatActivity() {
             currentExpression.append(num.toString())
             updateDisplay()
         } catch (e: NumberFormatException) {
-            // Ignore invalid number
         }
     }
 
-    /**
-     * Evaluates the expression on "=".
-     * Moves expression to text_last_operation, shows result in text_result.
-     * Uses a custom parser to handle operator precedence and errors.
-     */
     private fun calculate() {
         val current = currentExpression.toString()
         if (current.isEmpty() || current.endsWith(" ") || current == "0") {
@@ -206,11 +196,15 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-            // Format result: integer if no decimal, else float
             val resultStr = if (result % 1 == 0.0) {
                 result.toLong().toString()
             } else {
                 result.toString()
+            }
+
+            if (resultStr.length > 28) {
+                Toast.makeText(this, "Result exceeds display limit", Toast.LENGTH_SHORT).show()
+                return
             }
 
             binding.textLastOperation.text = current
@@ -223,12 +217,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Evaluates the expression using Shunting Yard algorithm to convert infix to postfix (RPN) and evaluate.
-     * Handles +, -, x, / with correct precedence, supports decimals and negatives.
-     */
     private fun evaluateExpression(expression: String): Double {
-        // Tokenize: split by spaces, replace 'x' with '*' and '÷' with '/' (adjust based on strings.xml)
         val tokens = expression.split(" ").map {
             it.replace("x", "*").replace("×", "*").replace("÷", "/")
         }
@@ -238,11 +227,11 @@ class MainActivity : AppCompatActivity() {
         val outputQueue = LinkedList<String>() // Postfix output (e.g., "5 10 2 * +")
         val operatorStack = Stack<String>() // Temporary stack for operators
 
-        // Shunting Yard: Convert infix to postfix
         for (token in tokens) {
             when {
                 // Number (including negative numbers)
-                token.toDoubleOrNull() != null || token.startsWith("-") && token.substring(1).toDoubleOrNull() != null -> {
+                token.toDoubleOrNull() != null || token.startsWith("-") && token.substring(1)
+                    .toDoubleOrNull() != null -> {
                     outputQueue.add(token)
                 }
                 // Operator
@@ -252,6 +241,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     operatorStack.push(token)
                 }
+
                 else -> throw IllegalArgumentException("Invalid token: $token")
             }
         }
@@ -278,6 +268,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+
                 else -> {
                     try {
                         evalStack.push(token.toDouble())
@@ -290,6 +281,35 @@ class MainActivity : AppCompatActivity() {
 
         if (evalStack.size != 1) throw IllegalArgumentException("Invalid expression: too many operands")
         return evalStack.pop()
+    }
+
+    /*
+    * Handles backspace button.
+    * */
+    private fun backspace() {
+        if (isResultDisplayed) {
+            clear()
+            return
+        }
+
+        if (currentExpression.isEmpty() || (currentExpression.length == 1 && currentExpression[0] == '0')) {
+            return
+        }
+
+        val lastChar = currentExpression.lastOrNull()
+        if (lastChar == ' ') {
+            if (currentExpression.length >= 3) {
+                currentExpression.setLength(currentExpression.length - 3)
+            }
+        } else {
+            currentExpression.setLength(currentExpression.length - 1)
+        }
+
+        if (currentExpression.isEmpty()) {
+            currentExpression.append("0")
+        }
+
+        updateDisplay()
     }
 
     /**
